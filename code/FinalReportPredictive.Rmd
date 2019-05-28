@@ -1,0 +1,926 @@
+---
+title: "FinalPredictiveReport"
+author: "Karan Dassi"
+date: "5/5/2019"
+output:
+  word_document:
+   toc: true
+   toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r Loading Libraries and Data Set}
+
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(ROCR))
+suppressPackageStartupMessages(library(Hmisc))
+suppressPackageStartupMessages(library(corrplot))
+suppressPackageStartupMessages(library(lmtest))
+suppressPackageStartupMessages(library(perturb))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(randomForest))
+suppressPackageStartupMessages(library(tree))
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(grid))
+suppressPackageStartupMessages(library(png))
+suppressPackageStartupMessages(library(gridExtra))
+
+HRA <- read.csv(file = "..\\Data\\HR-Employee-Attrition.csv", header = TRUE, sep = ",")
+
+#Renaming Age column to "Age"
+colnames(HRA)[1] <- "Age"
+
+```
+
+```{r business predictors}
+
+HRA %>%
+  select(Attrition, Age, BusinessTravel, Department, DistanceFromHome, Education, EnvironmentSatisfaction, Gender, 
+         HourlyRate, JobLevel, JobSatisfaction, MaritalStatus, MonthlyIncome, OverTime, PerformanceRating, 
+         RelationshipSatisfaction, TotalWorkingYears, WorkLifeBalance, YearsSinceLastPromotion, 
+         YearsWithCurrManager) ->
+  hraReducedBusiness
+
+
+```
+
+## Analytics question:  
+What will be the future employee turnover for IBM?
+Here we are trying to predict a classification outcome primarily attrition (which is binomial in nature) – the two categories are:
+Terminated (Yes/1)
+Not Terminated (No/0)
+Our motive here is to build a strong logistic predictive model for IBM so that we can re-use the model in the future and use it as a framework to predict employee turnover.
+We are trying to find out the proportion of employees that will be terminated for IBM for our test dataset. Here our test data is a portion of all the employees for IBM.  
+Also, note that we are building this predicitve model for every employee in the company irrespective of their department, age, gender or any other factor.  
+
+### Articulation of Goals:
+a.	Interpretation: What are the most significant factors in determining employee turnover?  
+b.	Inference/Prediction: Building a strong predictive model for future employee churn (terminations) which can be referred again for predictions.
+
+
+## Business Rationale:  
+While in the past decades, most companies have improved their analytics capabilities in areas such as Supply Chain, Accounting and Marketing, fewer are using analytics in their workforce to make predictions and take action on future HR issues.  
+The aim of this project is to encourage companies such as IBM to invest more in HR analytics to improve their interactions with their employees before issues arise. We believe that the predictive models that will be built throughout this project will provide the company with insights on future employee turnover irrespective of department and roles. To do so, our predictive analysis will look at many factors such as distance from home, environment satisfaction, monthly income, years of experience, department, etc.  
+We believe that IBM could benefit from implementing our models in their company to take actions on the identified areas of concerns and reduce costs of turnover related to employee resignations and terminations by improving upon the most significant factors such as Job satisfactio, distance from home, travel for the company, overtime, job satisfaction, etc.  
+
+## Dataset Identification:
+
+The data set used for this analysis is based on a Kaggle dataset created by IBM data scientists. This data set contains  information on 1470 employees of IBM with 35 variables representing specific characteristics of each employee including their Attrition status (if they left IBM or not). This IBM data consists of both numerical and categorical variables. An extensive list of these data and a brief description of each variable is available [see appendix].  
+The dependent variable here is Attrition which is a binomial categorical variable with an outcome of "Yes" meaning an employee left the company or "No" meaning the employee is still with the company.  
+
+## Descriptive Statistics:
+
+The aim of our project is to build a model that will be able to predict if an employee will leave IBM or not. Contrary to what the majority believe the factors that contribute to an employee’s attrition are not all related to the financial benefits a company offers to its employees. In fact, it is impossible to  conclude from the scatter plot [see appendix] the salary level of an employee lead to attrition.  
+The points of this plot for both employees leaving or staying at the company do not vary much based on the salary range. Looking at employees that are receiving the lowest salary, we see that most of them decide to stay at IBM regardless of their income. This implies that other factors are more significant to determine attrition.   Moreover, the bar chart [see] appendix], showed that most of the employee at IBM tends to stay at the company. In fact, about only 16% of the employees have left the company. This rate is somewhat high knowing that a good attrition rate for a company should not exceed 10%.    
+Additionally to monthly income, age seemed to be an interesting factor to take into consideration when analyzing attrition of  company. Looking at the density chart, we are able to determine the median age of the employee leaving the company which is approximately 31 years old; this indicates that the portion of employees leaving IBM are relatively young and suggest that some the reasons why they are leaving the company might be related to the level of satisfaction as well as other qualitative factors.   Another common and essential factor to consider when understanding the reasons why employees leave is the level of satisfaction. Indeed, job descriptions tend to differ a lot from what the company presents to the employee at the earlier phase of employment to the actual assigned duty when the employee begin his/her function. Employees that feel betrayed by their job descriptions might tend to leave the company to explore other opportunities. A bar chart displaying employee attrition in terms of job satisfaction confirm this statement. In fact, the figure shows the proportion of employees that are not satisfied with their job (job satisfaction level 1) and leave the company is higher compared to the proportion of employees are satisfied with their job but still leave the IBM. 
+We have also created various other plots to check for relationships between factors[see appendix].  
+
+We also went ahead and checked for mean, median and other characteristics and found out that they very well support our graphs above. [See Appendix]
+
+## Best subset predictor selection:  
+
+Steps followed:  
+1.	Firstly, we went on created the best subset of predictors according to business problem at hand which gave us quite a good logistic predictive model.  
+2.	Then, we checked for correlation between predictors and were able to eliminate one variable.  
+3.	Then, we moved on to selecting the most significant variables using stepwise method:     
+Here we went down to 14 variables. [see Appendix 5]  
+
+
+## Data Preprossesing:
+As we had a mixture of variables i.e. categorical as well as quantitative variables, so it was pretty hard to check for correlation between all the variables at once. So, to process the data we used the following steps:   
+1. Reduced the full set of variables from 35 to 19 predictors based on business sense.  
+2. Then, we ran a correlation matrix on all the quantitative variables [see appendix], we were easily able to eliminate Total working years at the company because it has very high serial correlation and is not that significant.  
+3. Then, we checked for correlation between categorical variables using chi square test and found out that Overtime was highly correlated but is very significant, thus, cannot remove it [see appendix].  
+4. We also checked for relation between categorical and quantitative variables by using box plots and could not find any good variables to eliminate [see appendix].  
+4. Finally, we ran a stepwise regression to find the best set of variables and could get to a final count of 14 predictors eliminating 5 variables [see appendix].  
+
+## Test for multicollinearity and autocorrelation:  
+We checked for autocorrelation for both business model as well as final reduced model with Durbin Watson test where we found out that the DW statistic is 1.9045 and 1.9051 respectively, which are well between the limits, thus we can declare that there is acceptable autocorrelation between residuals for both models [see appendix].    
+We also checked for Variance Inflation Factors for all the predictors in bothh our models and they were well under 10 for both the models, while the VIFs for the final reduced model has all the VIF values for various variables close to one but for the business model had a couple of variables with VIF's close to 9 which were eventually eliminated by stepwise regression. [see appendix]  
+
+## Assumptions to be met:  
+Observation independence: Eliminate serial correlation [see section above]  
+Appropriate outcome variable: Binomial outcome variable  
+Multicollinearity: Checked it after running the models. [see section above]    
+Linear relation between independent variables and log odds [see appendix]  
+Large Sample Size: We have quite a big dataset  
+All the above assumptions were met during our project with good results.  
+
+## Predictive models used:
+
+We basically used two models with three different predictor sets. The models we used are logistic regression and classification trees as our outcome (dependent) variable is binomial in nature.  
+As we can see that all the assumptions for these have been met, we could go ahead and implemment these models.
+
+## Logistic regression with cross validation:
+
+Firstly, we applied the logistic regression to the full model, then to the business reduced model and finally to the model after perfoming the variable selection method (stepwise variable selection). When, we checked for AIC for the models the AIC for final reduced model dropped down to 998 from 1007 [see appendix].  
+Also, we cross validated the business model and the variable reduced final model using confusion matrix and after checking the predictive accuracy, we could see that at lambda = 0.275, we could get the most balanced model. As our aim was to check for people leaving the company we had to reduce the lambda value to get a strong predictive model. So our final logistic model had an accuracy rate of 82 percent over business models accuracy rate of 81 percent, the sensitivity rate of 66 percent over 63 percent and finally the specificity rate of 87 percent over 85 percent.  We also checked the models with lambda values at 0.5, and 0.3, while these models gave us a good accuracy and specificity rate but the sensitivity rates were quite low and hence lamba = 0.275 [see appendix].  
+We also checked for area under ROC curve which originally came as 0.832 which was already pretty good and then, the area under ROC curve for final reduced model turned out to be 0.836 which is not significantly large but the final predictors gave us a pretty balanced predictive model.  
+
+## Classification Trees with cross validation:  
+
+Firstly, we tried to apply classification tree to the full business model which did not give quite significant results and there was bad accuracy as well. So, we went ahead and applied classification decision tree to the final reduced variables (created after eliminating serailly correlated variables and selecting variables using stepwise regression) and got some pretty good results to decide whether if an employee will be terminated or not but as a whole, the accuracy of logistic model is pretty good when compared to classification tree.  
+After cross validating the tree at mindev = 0.005, we found that the best number of nodes was 13 with a misclass of 238 which streamlined after 13 nodes for further number of nodes and misclass was very high before 13.  
+We also found out that the 2LL for this model was pretty high at 1014 when compared to the 2LL of our logistic model of 962 [see appendix].  
+Then, we went ahead and cross validated the accuracy of the classification tree model using confusion matrix and Area under ROC curve. Accuracy found by using confusion matrix was 86 percent which is higher than logistic model at lambda = 0.275 but this did not give us a balanced model with a pretty low sensitivity of 57 percent compared to 666 percent for our logistics model [see appendix].  
+The above was also prooved by checking the area under ROC curve which was 0.739 for the classification tree which is significantly lower than 0.836 for our final logisitc model [see appendix].  
+Looking at the above results, we concluded that our final results will be based upon reduced logistic model!   
+
+## Final Result:  
+
+## Appendix
+
+### Various graphs for our dataset for visualization:  
+```{r}
+
+set.seed(12345)
+inTrain <- createDataPartition(HRA$Attrition,p=0.75,list = FALSE)
+Training <- HRA[inTrain,]
+Testing <- HRA[-inTrain,]
+ggplot(Training,aes(Attrition,fill=Attrition))+geom_bar()
+AgePlot <- ggplot(Training,aes(Age,fill=Attrition))+geom_density()+facet_grid(~Attrition)
+TravelPlot <- ggplot(Training,aes(BusinessTravel,fill=Attrition))+geom_bar()
+MonthlyIncomePlot <- ggplot(Training,aes(MonthlyIncome,Attrition))+geom_point(size=4,alpha = 0.05)
+DepartmentPlot <- ggplot(Training,aes(Department,fill = Attrition))+geom_bar()
+DFHPlot <- ggplot(Training,aes(DistanceFromHome,fill=Attrition))+geom_bar()
+EducationPlot <- ggplot(Training,aes(Education,fill=Attrition))+geom_bar()
+EdfieldPlot <- ggplot(Training,aes(EducationField,fill=Attrition))+geom_bar()
+EnvironmentPlot <- ggplot(Training,aes(EnvironmentSatisfaction,fill=Attrition))+geom_bar()
+jobLevelPlot <- ggplot(Training,aes(JobLevel,fill=Attrition))+geom_bar()
+jobSatPlot <- ggplot(Training,aes(JobSatisfaction,fill=Attrition))+geom_bar()
+overTimePlot <- ggplot(Training,aes(OverTime,fill=Attrition))+geom_bar()
+RelSatisPlot <- ggplot(Training,aes(RelationshipSatisfaction,fill = Attrition))+geom_bar()
+WLBPlot <- ggplot(Training,aes(WorkLifeBalance,fill = Attrition))+geom_bar()
+YearsCurrManPlot <- ggplot(Training,aes(YearsWithCurrManager,fill = Attrition))+geom_bar()
+YearsSincePromPlot <- ggplot(Training,aes(YearsSinceLastPromotion,fill = Attrition))+geom_bar()
+grid.arrange(AgePlot, TravelPlot, nrow = 2)
+grid.arrange(MonthlyIncomePlot, DepartmentPlot, nrow = 2)
+grid.arrange(DFHPlot, EducationPlot, nrow = 2)
+grid.arrange(EdfieldPlot, EnvironmentPlot, nrow = 2)
+grid.arrange(jobLevelPlot, jobSatPlot, nrow = 2)
+grid.arrange(overTimePlot, WLBPlot, nrow = 2)
+grid.arrange(YearsCurrManPlot, YearsSincePromPlot, nrow = 2)
+
+```
+
+
+### Descriptiive Statistics textual for business model:
+
+```{r}
+
+summary(hraReducedBusiness)
+
+```
+We can see that there are only a few employees who have left the company, also can see the data supports our graphs.  
+
+### Full business Logistic model output, 2LL and AIC:  
+```{r}
+
+#Finding the proportion of attrition employees
+hraReducedBusiness %>%
+  group_by(Attrition) %>%
+  summarise (n = n()) %>%
+  mutate(freq = n / sum(n))
+
+hra.logit <- glm(hraReducedBusiness$Attrition ~ ., data=hraReducedBusiness, family=binomial(link="logit"))
+
+summary(hra.logit)
+
+#Coefficient Plot:
+require(coefplot)
+coefplot(hra.logit)
+
+#We can see that a lot of the coefficient's confidence intervals are away from zero and a lot are quite close to zero and significant.
+
+# Fit statistics
+
+-2*logLik(hra.logit) # 2LL
+deviance(hra.logit) # Should yield the same value
+AIC(hra.logit) # 2LL + 2*Number of variables
+
+log.odds <- coef(hra.logit)
+odds <- exp(coef(hra.logit))
+prob <- odds/(1+odds)
+cbind(log.odds, odds, prob)
+
+#95 percent confidence intervals of log odds.
+confint(hra.logit)
+
+#95 percent confidence intervals of odds.
+exp(confint(hra.logit))
+
+```
+
+### Correlation Matrix for quantitative variables:    
+```{r}
+
+hraReducedBusiness %>%
+  select(Age, DistanceFromHome, HourlyRate, MonthlyIncome, PerformanceRating, TotalWorkingYears, YearsSinceLastPromotion, YearsWithCurrManager)    ->  hraQuant
+
+str(hraQuant)
+
+#Correlation between quantitative variables
+hra.cor <- cor(hraQuant)
+hra.cor
+
+#Correlation matrix with p values
+hra.rcorr <- rcorr(as.matrix(hraQuant))
+hra.rcorr
+
+#Correlation Plot, blues indicate positive correlation and reds indicate negative corelation.
+corrplot(hra.cor)
+
+
+```
+
+### Chi Square test for categorical correlation check:  
+```{r}
+
+tbl <- table(hraReducedBusiness$BusinessTravel, hraReducedBusiness$Department)
+tbl
+
+chisq.test(tbl)
+
+#Shows that Business Travel is highly dependent on Department
+
+tbl <- table(hraReducedBusiness$BusinessTravel, hraReducedBusiness$Gender)
+tbl
+
+chisq.test(tbl)
+
+#Shows business travel is somewhat dependent on Gender
+
+tbl <- table(hraReducedBusiness$Gender, hraReducedBusiness$Department)
+tbl
+
+chisq.test(tbl)
+#Shows that Gender and Department are slightly correlated
+
+tbl <- table(hraReducedBusiness$MaritalStatus, hraReducedBusiness$OverTime)
+tbl
+
+chisq.test(tbl)
+#Shows marital status and overtime are highly dependent
+
+tbl <- table(hraReducedBusiness$MaritalStatus, hraReducedBusiness$Department)
+tbl
+
+chisq.test(tbl)
+#Slightly related
+
+tbl <- table(hraReducedBusiness$BusinessTravel, hraReducedBusiness$MaritalStatus)
+tbl
+
+chisq.test(tbl)
+#Slight relation
+
+tbl <- table(hraReducedBusiness$OverTime, hraReducedBusiness$Department)
+tbl
+
+chisq.test(tbl)
+#Highly related
+
+tbl <- table(hraReducedBusiness$BusinessTravel, hraReducedBusiness$OverTime)
+tbl
+
+chisq.test(tbl)
+#Slightly related
+
+tbl <- table(hraReducedBusiness$Gender, hraReducedBusiness$OverTime)
+tbl
+
+chisq.test(tbl)
+#Slightly related
+
+tbl <- table(hraReducedBusiness$Gender, hraReducedBusiness$MaritalStatus)
+tbl
+
+chisq.test(tbl)
+#Slightly Related
+
+```
+
+### Box Plots for quant vs Categorical variables:  
+```{r}
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = BusinessTravel, y = DistanceFromHome)) +
+  geom_boxplot() +
+  theme_bw()
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = Gender, y = HourlyRate)) +
+  geom_boxplot() +
+  theme_bw()
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = Department, y = Education)) +
+  geom_boxplot() +
+  theme_bw()
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = BusinessTravel, y = Age)) +
+  geom_boxplot() +
+  theme_bw()
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = BusinessTravel, y = YearsSinceLastPromotion)) +
+  geom_boxplot() +
+  theme_bw()
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = BusinessTravel, y = YearsWithCurrManager)) +
+  geom_boxplot() +
+  theme_bw()
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = BusinessTravel, y = JobSatisfaction)) +
+  geom_boxplot() +
+  theme_bw()
+
+hraReducedBusiness %>%
+  ggplot(mapping = aes(x = BusinessTravel, y = EnvironmentSatisfaction)) +
+  geom_boxplot() +
+  theme_bw()
+
+```
+
+### Stepwise Results: 
+```{r}
+
+hraReducedBusiness %>%
+  select(-TotalWorkingYears) ->
+  hrareducedcor
+
+hra.logit <- glm(hraReducedBusiness$Attrition ~ ., data=hraReducedBusiness, family=binomial(link="logit"))
+
+hra.logit.cor.null <- glm(hrareducedcor$Attrition ~ 1, data=hraReducedBusiness, family=binomial(link="logit"))
+
+hra.logit.cor.full <- glm(hrareducedcor$Attrition ~ ., data=hraReducedBusiness, family=binomial(link="logit"))
+
+hra.step.backward <- step(hra.logit.cor.full, scope=list(lower=hra.logit.cor.null, upper=hra.logit.cor.full), direction="both", test="F")
+summary(hra.step.backward)
+
+```
+**The model with the lowest AIC shows that totalworkinghours, monthlyincome, performancerating, hourlyrate, and education are not significant and AIC has been reduced to 998.21 from 1007.5**  
+
+### Stepwise reduced model:  
+```{r}
+
+hrareducedcor %>%
+  select(Attrition, Age, BusinessTravel, Department, DistanceFromHome, EnvironmentSatisfaction, Gender, JobLevel, JobSatisfaction, MaritalStatus,
+         OverTime, RelationshipSatisfaction, WorkLifeBalance, YearsSinceLastPromotion, YearsWithCurrManager) ->
+  hrastepreduced
+
+
+hra.logit.final.red <- glm(hrastepreduced$Attrition ~ ., data=hrastepreduced, family=binomial(link="logit"))
+summary(hra.logit.final.red)
+
+
+```
+
+### Comparison of 2LL and AIC:  
+```{r}
+-2*logLik(hra.logit) # 2LL
+deviance(hra.logit) # Should yield the same value
+AIC(hra.logit) # 2LL + 2*Number of variables
+-2*logLik(hra.logit.final.red) # 2LL
+deviance(hra.logit.final.red) # Should yield the same value
+AIC(hra.logit.final.red) # 2LL + 2*Number of variables
+
+
+```
+
+
+### DW Test:
+```{r}
+
+
+hra.logit <- glm(hraReducedBusiness$Attrition ~ ., data=hraReducedBusiness, family=binomial(link="logit"))
+
+dwtest(hra.logit)
+
+hra.logit.final.red <- glm(hrastepreduced$Attrition ~ ., data=hrastepreduced, family=binomial(link="logit"))
+
+dwtest(hra.logit.final.red)
+
+```
+
+### VIF for business and final reduced model:  
+```{r}
+
+vif(hra.logit)
+vif(hra.logit.final.red)
+
+```
+
+### Cross validation for Business modeL:  
+```{r}
+
+attach(hraReducedBusiness) 
+set.seed(1)
+
+train <- sample(1:nrow(hraReducedBusiness), 0.7*nrow(hraReducedBusiness))
+test <- seq(1:nrow(hraReducedBusiness))[-train]
+
+hra.logit.train <- glm(Attrition ~ ., family=binomial(link="logit"), data=hraReducedBusiness[train,])
+
+
+# Predicted values using the fitted train model and the test data for HRA Attrition
+
+hra.logit.test=predict(hra.logit.train, hraReducedBusiness, type="response")[test]
+
+#Convert proportions to actual 0's or 1's
+
+hra.pred.test = ifelse(hra.logit.test>0.5, 1,0)
+# Cross tabulate Prediction with Actual
+
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+
+#Final Confusion Matrix
+conf.mat
+
+#We can see that our model does a very good job at predicting No's but is not that good at predicting Yes's
+
+# Computing Fit Statistics
+
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+
+# Now let's use these to compute accuracy and error rates
+
+Accuracy.Rate <- (TruN + TruP) / Tot
+
+
+Error.Rate <- (FalN + FalP) / Tot
+# Sensitivity -- rate of correct positives
+
+Sensitivity <- TruP / TotP 
+#Prediction for true positives is quite bad
+
+# Specificity -- rate of correct negatives
+
+Specificity <- TruN / TotN 
+
+#Predicting true negatives is really good with this model.
+
+# False Positive Rate 
+FalseP.Rate <- 1 - Specificity
+
+logit.rates.50 <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+
+names(logit.rates.50) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+
+print(logit.rates.50, digits=2)
+
+hra.pred.test = ifelse(hra.logit.test>0.2, 1,0) 
+hra.pred.test[1:10] # List first 10
+
+# Cross tabulate Prediction with Actual
+
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+
+#Final Confusion Matrix
+conf.mat
+
+#We can see that our model does a very good job at predicting No's but is not that good at predicting Yes's
+
+# Computing Fit Statistics
+
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+
+# Now let's use these to compute accuracy and error rates
+
+Accuracy.Rate <- (TruN + TruP) / Tot
+
+Error.Rate <- (FalN + FalP) / Tot
+#The overall error rate is quite bad
+# Sensitivity -- rate of correct positives
+
+Sensitivity <- TruP / TotP 
+# Specificity -- rate of correct negatives
+
+Specificity <- TruN / TotN 
+
+# False Positive Rate 
+FalseP.Rate <- 1 - Specificity
+
+logit.rates.20 <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+
+names(logit.rates.20) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+
+logit.fit.stats.compare <- rbind(logit.rates.50, logit.rates.20)
+
+hra.pred.test = ifelse(hra.logit.test>0.30, 1,0) 
+hra.pred.test[1:10] # List first 10
+
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+
+conf.mat
+
+#We can see that our model does a very good job at predicting No's but is not that good at predicting Yes's
+
+# Computing Fit Statistics
+
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+
+# Now let's use these to compute accuracy and error rates
+
+Accuracy.Rate <- (TruN + TruP) / Tot
+
+Error.Rate <- (FalN + FalP) / Tot
+
+# Sensitivity -- rate of correct positives
+
+Sensitivity <- TruP / TotP 
+# Specificity -- rate of correct negatives
+
+Specificity <- TruN / TotN 
+
+# False Positive Rate 
+FalseP.Rate <- 1 - Specificity
+
+logit.rates.30 <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+
+names(logit.rates.30) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+
+print(logit.rates.30, digits=2)
+
+logit.fit.stats.compare.new <- rbind(logit.fit.stats.compare, logit.rates.30)
+print(logit.fit.stats.compare.new, digits=2)
+
+
+#Finally, with Lambda = 0.25
+hra.pred.test = ifelse(hra.logit.test>0.275, 1,0) 
+hra.pred.test[1:10] # List first 10
+
+# Cross tabulate Prediction with Actual
+
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+
+#Final Confusion Matrix
+conf.mat
+
+#We can see that our model does a very good job at predicting No's but is not that good at predicting Yes's
+
+# Computing Fit Statistics
+
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+
+# Now let's use these to compute accuracy and error rates
+
+Accuracy.Rate <- (TruN + TruP) / Tot
+
+Error.Rate <- (FalN + FalP) / Tot
+
+# Sensitivity -- rate of correct positives
+
+Sensitivity <- TruP / TotP 
+# Specificity -- rate of correct negatives
+
+Specificity <- TruN / TotN 
+
+# False Positive Rate 
+FalseP.Rate <- 1 - Specificity
+
+logit.rates.275 <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+
+names(logit.rates.275) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+
+print(logit.rates.275, digits=2)
+
+logit.fit.stats.compare.new1 <- rbind(logit.fit.stats.compare.new, logit.rates.275)
+print("Final Comparision of the four models:")
+print(logit.fit.stats.compare.new1, digits=2)
+```
+
+### ROC curve for business model:  
+```{r}
+
+pred <- prediction(hra.logit.test, Attrition[test]) 
+
+# The next step is to use the performance(){ROCR} function to create the ROC object. Use "tpr" for True Positive Rate in the vertical axis, and "fpr" for False Positive Rate in the horizontal axis. Other possible values are: "acc"=accuracy; "err"=error rate; "sens"=sensitivity; "spec"=specificity; "auc"=area under the curve 
+
+perf <- performance(pred,"tpr","fpr")
+plot(perf, colorize=T)
+
+# Computing the AUC -- also done with the performance() function:
+
+auc <- performance(pred,"auc")
+
+# The performance() object above stores the name of the variable in @y.name[[1]] and the actual AUC in @y.values[[1]]. Note: the use of double brackets [[]] instead of single brackets [] and @ instead of $ to access values is because the performance() object is a "list" not a data frame. Lists use [[]] for indexing values and @ for accessing elements in the list.
+
+c(auc@y.name[[1]], auc@y.values[[1]])
+
+
+```
+
+
+### Cross Validation for final reduced model:  
+```{r}
+
+
+attach(hrastepreduced) 
+set.seed(1)
+
+train <- sample(1:nrow(hrastepreduced), 0.7*nrow(hrastepreduced))
+test <- seq(1:nrow(hrastepreduced))[-train]
+
+hra.logit.train <- glm(Attrition ~ ., family=binomial(link="logit"), data=hrastepreduced[train,])
+
+hra.logit.test=predict(hra.logit.train, hrastepreduced, type="response")[test]
+
+
+hra.pred.test = ifelse(hra.logit.test>0.5, 1,0)
+
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+
+conf.mat
+
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+
+Accuracy.Rate <- (TruN + TruP) / Tot
+
+Error.Rate <- (FalN + FalP) / Tot
+Sensitivity <- TruP / TotP 
+Specificity <- TruN / TotN 
+FalseP.Rate <- 1 - Specificity
+logit.rates.50.red <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+names(logit.rates.50.red) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+logit.fit.stats.compare.red <- rbind(logit.rates.50.red, logit.fit.stats.compare.new1)
+print(logit.fit.stats.compare.red, digits = 2)
+
+hra.pred.test = ifelse(hra.logit.test>0.2, 1,0) 
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+conf.mat
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+Accuracy.Rate <- (TruN + TruP) / Tot
+Error.Rate <- (FalN + FalP) / Tot
+Sensitivity <- TruP / TotP 
+Specificity <- TruN / TotN 
+FalseP.Rate <- 1 - Specificity
+logit.rates.20.red <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+names(logit.rates.20.red) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+logit.fit.stats.compare.red <- rbind(logit.rates.50.red, logit.rates.20.red)
+hra.pred.test = ifelse(hra.logit.test>0.3, 1,0) 
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+conf.mat
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+Accuracy.Rate <- (TruN + TruP) / Tot
+Accuracy.Rate 
+Error.Rate <- (FalN + FalP) / Tot
+
+Sensitivity <- TruP / TotP 
+Specificity <- TruN / TotN 
+FalseP.Rate <- 1 - Specificity
+FalseP.Rate
+logit.rates.30.red <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+names(logit.rates.30.red) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+logit.fit.stats.compare.new.red <- rbind(logit.fit.stats.compare.red, logit.rates.30.red)
+hra.pred.test = ifelse(hra.logit.test>0.275, 1,0) 
+conf.mat <- table("Predicted"=hra.pred.test, "Actual"=Attrition[test]) 
+colnames(conf.mat) <- c("No", "Yes")
+rownames(conf.mat) <- c("No", "Yes")
+conf.mat
+
+TruN <- conf.mat[1,1] # True negatives
+TruP <- conf.mat[2,2] # True positives
+FalN <- conf.mat[1,2] # False negatives
+FalP <- conf.mat[2,1] # False positives
+TotN <- conf.mat[1,1] + conf.mat[2,1] # Total negatives
+TotP <- conf.mat[1,2] + conf.mat[2,2] # Total positives
+Tot <- TotN+TotP # Total
+Accuracy.Rate <- (TruN + TruP) / Tot
+Error.Rate <- (FalN + FalP) / Tot
+Sensitivity <- TruP / TotP 
+Specificity <- TruN / TotN 
+FalseP.Rate <- 1 - Specificity
+logit.rates.275.red <- c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalseP.Rate)
+names(logit.rates.275.red) <- c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+logit.fit.stats.compare.new1.red <- rbind(logit.fit.stats.compare.new.red, logit.rates.275.red)
+print("Final Comparision of the four models:")
+print(logit.fit.stats.compare.new1.red, digits=2)
+
+logit.fit.stats.compare.new1.final <- rbind(logit.fit.stats.compare.new1.red, logit.fit.stats.compare.new1)
+print(logit.fit.stats.compare.new1.final, digits = 2)
+
+```
+
+
+### ROC Curve for final reduced model:  
+```{r}
+
+pred <- prediction(hra.logit.test, Attrition[test]) 
+perf <- performance(pred,"tpr","fpr")
+plot(perf, colorize=T)
+auc <- performance(pred,"auc")
+c(auc@y.name[[1]], auc@y.values[[1]])
+
+```
+
+### Classification Tree on the business reduced model:
+```{r}
+
+hra.tree <- tree(Attrition~., hraReducedBusiness)
+summary(hra.tree)
+plot(hra.tree)
+text(hra.tree, pretty = 0)
+hra.tree
+
+```
+
+### Classification Tree on the stepwise reduced model:
+```{r}
+hra.tree.step <- tree(Attrition~., hrastepreduced)
+summary(hra.tree.step)
+plot(hra.tree.step)
+text(hra.tree, pretty = 0)
+hra.tree.step
+
+hra.tree.step.large <- tree(Attrition~.,hrastepreduced, mindev=0.005)
+plot(hra.tree.step.large) # Plot the tree
+text(hra.tree.step.large, pretty=0) # Let's make it pretty and add labels
+
+
+```
+
+### Cross validate the classification tree:
+```{r}
+
+cv.hrareduced <- cv.tree(hra.tree.step.large, FUN = prune.misclass)
+cv.hrareduced
+
+cbind("Tree Size"=cv.hrareduced$size, "Misclass"=cv.hrareduced$dev)
+plot(cv.hrareduced, type="b") 
+prune.hrastepred=prune.misclass(hra.tree.step.large,best=13)
+summary(prune.hrastepred)
+plot(prune.hrastepred) # Plot the tree
+text(prune.hrastepred, pretty=0) # With labels
+
+
+```
+
+### Cross validation using subset sampling:
+```{r}
+
+train=sample(1:nrow(hrastepreduced), 0.7*nrow(hrastepreduced))
+test=seq(1:nrow(hrastepreduced))[-train]
+hra.step.train.tree = tree(Attrition ~ ., data=hrastepreduced[train,])
+hra.step.train.tree # See tree results
+summary(hra.step.train.tree) # Basic tree results
+plot(hra.step.train.tree) # Plot the tree
+text(hra.step.train.tree, pretty=0) # Add labels, pretty messy tree
+hra.step.test = hrastepreduced[test,]
+hra.tree.pred.step = predict(hra.step.train.tree, hra.step.test, type="class")
+hra.step.pred.prob=predict(hra.step.train.tree, hra.step.test)
+hra.tree.confmat=table("Predicted"=hra.tree.pred.step, "Actual"=hra.step.test$Attrition) # Confusion matrix
+hra.tree.confmat
+
+TruN=hra.tree.confmat[1,1] # True negatives
+TruP=hra.tree.confmat[2,2] # True positives
+FalN=hra.tree.confmat[1,2] # False negatives
+FalP=hra.tree.confmat[2,1] # False positives
+TotN=hra.tree.confmat[1,1] + hra.tree.confmat[2,1] # Total negatives
+TotP=hra.tree.confmat[1,2] + hra.tree.confmat[2,2] # Total positives
+Tot=TotN+TotP # Total
+Accuracy.Rate=(TruN+TruP)/Tot
+Error.Rate=(FalN+FalP)/Tot
+Sensitivity=TruP/TotP # Proportion of correct positives
+Specificity=TruN/TotN 
+
+FalP.Rate = 1 - Specificity
+tree.rates.50=c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalP.Rate)
+
+names(tree.rates.50)=c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+hra.tree.pred.class.275 = ifelse(hra.step.pred.prob[,2]>0.275, 1, 0)
+hra.tree.confmat.275 <- table(hra.tree.pred.class.275, hra.step.test$Attrition) 
+hra.tree.confmat.275
+
+TruN=hra.tree.confmat.275[1,1] # True negatives
+TruP=hra.tree.confmat.275[2,2] # True positives
+FalN=hra.tree.confmat.275[1,2] # False negatives
+FalP=hra.tree.confmat.275[2,1] # False positives
+TotN=hra.tree.confmat.275[1,1] + hra.tree.confmat.275[2,1] # Total negatives
+TotP=hra.tree.confmat.275[1,2] + hra.tree.confmat.275[2,2] # Total positives
+Tot=TotN+TotP # Total
+Accuracy.Rate=(TruN+TruP)/Tot
+Error.Rate=(FalN+FalP)/Tot
+Sensitivity=TruP/TotP # Proportion of correct positives
+Specificity=TruN/TotN # Proportion of correct negatives
+FalP.Rate = 1 - Specificity
+
+tree.rates.275=c(Accuracy.Rate, Error.Rate, Sensitivity, Specificity, FalP.Rate)
+
+names(tree.rates.275)=c("Accuracy Rate", "Error Rate", "Sensitivity", "Specificity", "False Positives")
+
+tree.rates.275
+
+rbind(tree.rates.50, tree.rates.275, logit.fit.stats.compare.new1.final)
+
+
+
+```
+### ROC curve for our tree model:  
+```{r}
+
+pred <- prediction(hra.step.pred.prob[,2], hra.step.test$Attrition) 
+perf=performance(pred,"tpr","fpr")
+plot(perf, colorize=TRUE)
+
+auc=performance(pred,"auc") # Compute the AUC
+c(auc@y.name[[1]], auc@y.values[[1]]) # Display the AUC
+
+
+```
+
+### Final Results based on logistic model:
+
+```{r}
+
+attach(hrastepreduced) 
+
+hra.logit.train <- glm(Attrition ~ ., family=binomial(link="logit"), data=hrastepreduced)
+
+set.seed(1)
+
+test <- sample(1:nrow(hrastepreduced), 0.2*nrow(hrastepreduced))
+
+hra.logit.test=predict(hra.logit.train, hrastepreduced, type="response")[test]
+
+hra.pred.test = ifelse(hra.logit.test>0.275, 1,0)
+
+Sum <- sum(hra.pred.test)
+
+finalProportion <- (Sum/294) * 100
+
+print("Final portion of employees leaving: ")
+finalProportion
+
+
+```
+
